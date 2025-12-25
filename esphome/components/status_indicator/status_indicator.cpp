@@ -1,16 +1,28 @@
 #include "status_indicator.h"
+#include "esphome/components/network/util.h"
 #include "esphome/core/log.h"
 #include "esphome/core/application.h"
+
+#ifdef USE_WIFI
+#include "esphome/components/wifi/wifi_component.h"
+#endif
 
 #ifdef USE_ETHERNET
 #include "esphome/components/ethernet/ethernet_component.h"
 #endif
-#ifdef USE_WIFI
-#include "esphome/components/wifi/wifi_component.h"
+
+#ifdef USE_OPENTHREAD
+#include "esphome/components/openthread/openthread.h"
 #endif
+
+#ifdef USE_MODEM
+#include "esphome/components/modem/modem_component.h"
+#endif
+
 #ifdef USE_MQTT
 #include "esphome/components/mqtt/mqtt_client.h"
 #endif
+
 #ifdef USE_API
 #include "esphome/components/api/api_server.h"
 #endif
@@ -18,32 +30,25 @@
 namespace esphome {
 namespace status_indicator {
 
-bool has_network() {
+static bool has_network() {
 #ifdef USE_ETHERNET
   if (ethernet::global_eth_component != nullptr)
     return true;
 #endif
 
-#ifdef USE_WIFI
-  if (wifi::global_wifi_component != nullptr)
-    return true;
-#endif
-
-#ifdef USE_HOST
-  return true;  // Assume its connected
-#endif
-  return false;
-}
-
-bool is_connected() {
-#ifdef USE_ETHERNET
-  if (ethernet::global_eth_component != nullptr && ethernet::global_eth_component->is_connected())
+#ifdef USE_MODEM
+  if (modem::global_modem_component != nullptr)
     return true;
 #endif
 
 #ifdef USE_WIFI
   if (wifi::global_wifi_component != nullptr)
-    return wifi::global_wifi_component->is_connected();
+    return true;
+#endif
+
+#ifdef USE_OPENTHREAD
+  if (openthread::global_openthread_component != nullptr)
+    return true;
 #endif
 
 #ifdef USE_HOST
@@ -72,16 +77,16 @@ void StatusIndicator::loop() {
 
   if (has_network()) {
 #ifdef USE_WIFI
-    if (status.empty() && wifi::global_wifi_component->is_ap_enabled()) {
-      status = "on_wifi_ap_enabled";
+    if (status.empty() && wifi::global_wifi_component->is_ap_active()) {
+      status = "on_wifi_ap_active";
       this->status_.on_wifi_ap = 1;
     } else if (this->status_.on_wifi_ap) {
-      status = "on_wifi_ap_disabled";
+      status = "on_wifi_ap_inactive";
       this->status_.on_wifi_ap = 0;
     }
 #endif
 
-    if (status.empty() && not is_connected()) {
+    if (status.empty() && !network::is_connected()) {
       status = "on_network_disconnected";
       this->status_.on_network = 1;
     } else if (this->status_.on_network) {
@@ -90,7 +95,7 @@ void StatusIndicator::loop() {
     }
 
 #ifdef USE_API
-    if (status.empty() && api::global_api_server != nullptr && not api::global_api_server->is_connected()) {
+    if (status.empty() && api::global_api_server != nullptr && !api::global_api_server->is_connected()) {
       status = "on_api_disconnected";
       this->status_.on_api = 1;
     } else if (this->status_.on_api) {
@@ -99,7 +104,7 @@ void StatusIndicator::loop() {
     }
 #endif
 #ifdef USE_MQTT
-    if (status.empty() && mqtt::global_mqtt_client != nullptr && not mqtt::global_mqtt_client->is_connected()) {
+    if (status.empty() && mqtt::global_mqtt_client != nullptr && !mqtt::global_mqtt_client->is_connected()) {
       status = "on_mqtt_disconnected";
       this->status_.on_mqtt = 1;
     } else if (this->status_.on_mqtt) {

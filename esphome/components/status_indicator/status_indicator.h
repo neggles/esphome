@@ -56,9 +56,9 @@ class StatusTrigger : public Trigger<> {
 
  protected:
   StatusIndicator *parent_;
-  std::string name_;   /// Minimum length of click. 0 means no minimum.
-  std::string group_;  /// Minimum length of click. 0 means no minimum.
-  uint32_t priority_;  /// Maximum length of click. 0 means no maximum.
+  std::string name_;
+  std::string group_;
+  uint32_t priority_;
 };
 
 template<typename... Ts> class StatusCondition : public Condition<Ts...> {

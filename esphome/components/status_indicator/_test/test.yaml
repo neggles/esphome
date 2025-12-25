@@ -79,7 +79,7 @@ status_indicator:
           brightness: 100%
           effect: Slow Pulse
 
-  on_wifi_ap_enabled:
+  on_wifi_ap_active:
     then:
       - light.turn_on:
           id: led

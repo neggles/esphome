@@ -30,6 +30,8 @@
 namespace esphome {
 namespace status_indicator {
 
+static const char *const TAG = "status_indicator";
+
 static bool has_network() {
 #ifdef USE_ETHERNET
   if (ethernet::global_eth_component != nullptr)
@@ -52,100 +54,107 @@ static bool has_network() {
 #endif
 
 #ifdef USE_HOST
-  return true;  // Assume its connected
+  return true;  // Assume network is present for host-mode builds
 #endif
   return false;
 }
 
-static const char *const TAG = "status_indicator";
-
 void StatusIndicator::dump_config() {
-  ESP_LOGCONFIG(TAG, "Status Indicator supports:");
+  ESP_LOGCONFIG(TAG, "Status Indicator triggers:");
   for (auto i = this->triggers_.begin(); i != this->triggers_.end(); i++) {
     ESP_LOGCONFIG(TAG, " * %s: %s", i->first.c_str(), i->second->get_info().c_str());
   }
 }
+
 void StatusIndicator::loop() {
-  std::string status{""};
-  if ((App.get_app_state() & STATUS_LED_ERROR) != 0u) {
-    status = "on_app_error";
+  uint8_t new_state = App.get_app_state() & STATUS_LED_MASK;
+  std::string new_status{""};
+
+  if (new_state != this->last_app_state_) {
+    ESP_LOGV(TAG, "New app state 0x%02X", new_state);
+  }
+
+  if ((new_state & STATUS_LED_ERROR) != 0u) {
+    new_status = "on_app_error";
     this->status_.on_error = 1;
   } else if (this->status_.on_error) {
-    status = "on_clear_app_error";
+    new_status = "on_clear_app_error";
     this->status_.on_error = 0;
   }
 
   if (has_network()) {
 #ifdef USE_WIFI
-    if (status.empty() && wifi::global_wifi_component->is_ap_active()) {
-      status = "on_wifi_ap_active";
+    if (new_status.empty() && wifi::global_wifi_component->is_ap_active()) {
+      new_status = "on_wifi_ap_active";
       this->status_.on_wifi_ap = 1;
     } else if (this->status_.on_wifi_ap) {
-      status = "on_wifi_ap_inactive";
+      new_status = "on_wifi_ap_inactive";
       this->status_.on_wifi_ap = 0;
     }
 #endif
 
-    if (status.empty() && !network::is_connected()) {
-      status = "on_network_disconnected";
+    if (new_status.empty() && !network::is_connected()) {
+      new_status = "on_network_disconnected";
       this->status_.on_network = 1;
     } else if (this->status_.on_network) {
-      status = "on_network_connected";
+      new_status = "on_network_connected";
       this->status_.on_network = 0;
     }
 
 #ifdef USE_API
-    if (status.empty() && api::global_api_server != nullptr && !api::global_api_server->is_connected()) {
-      status = "on_api_disconnected";
+    if (new_status.empty() && api::global_api_server != nullptr && !api::global_api_server->is_connected()) {
+      new_status = "on_api_disconnected";
       this->status_.on_api = 1;
     } else if (this->status_.on_api) {
-      status = "on_api_connected";
+      new_status = "on_api_connected";
       this->status_.on_api = 0;
     }
 #endif
+
 #ifdef USE_MQTT
-    if (status.empty() && mqtt::global_mqtt_client != nullptr && !mqtt::global_mqtt_client->is_connected()) {
-      status = "on_mqtt_disconnected";
+    if (new_status.empty() && mqtt::global_mqtt_client != nullptr && !mqtt::global_mqtt_client->is_connected()) {
+      new_status = "on_mqtt_disconnected";
       this->status_.on_mqtt = 1;
     } else if (this->status_.on_mqtt) {
-      status = "on_mqtt_connected";
+      new_status = "on_mqtt_connected";
       this->status_.on_mqtt = 0;
     }
 #endif
   }
-  if (status.empty() && (App.get_app_state() & STATUS_LED_WARNING) != 0u) {
-    status = "on_app_warning";
+
+  if (new_status.empty() && (new_state & STATUS_LED_WARNING) != 0u) {
+    new_status = "on_app_warning";
     this->status_.on_warning = 1;
   } else if (this->status_.on_warning) {
-    status = "on_clear_app_warning";
+    new_status = "on_clear_app_warning";
     this->status_.on_warning = 0;
   }
 
-  if (this->current_status_ != status) {
-    if (this->current_trigger_ != nullptr and this->current_trigger_->is_action_running() and !status.empty()) {
-      this->current_trigger_->stop_action();
+  if (this->last_status_ != new_status) {
+    if (this->last_trigger_ != nullptr and this->last_trigger_->is_action_running() and !new_status.empty()) {
+      this->last_trigger_->stop_action();
     }
-    StatusTrigger *oldtrigger = this->current_trigger_;
+    StatusTrigger *last_trigger = this->last_trigger_;
 
-    if (!status.empty() && this->triggers_.count(status) == 1) {
-      this->current_trigger_ = get_trigger(status);
+    if (!new_status.empty() && this->triggers_.count(new_status) == 1) {
+      this->last_trigger_ = get_trigger(new_status);
     } else if (!this->stack_.empty()) {
-      this->current_trigger_ = this->stack_.back();
-      status = "on_custom_status";
+      this->last_trigger_ = this->stack_.back();
+      new_status = "on_custom_status";
     } else {
-      this->current_trigger_ = get_trigger("on_turn_off");
-      status = "on_turn_off";
+      this->last_trigger_ = get_trigger("on_turn_off");
+      new_status = "on_turn_off";
     }
-    if (oldtrigger != this->current_trigger_) {
-      ESP_LOGI(TAG, "<>> %s->%s", status.c_str(), this->current_trigger_->get_name().c_str());
-      this->current_trigger_->trigger();
+
+    if (last_trigger != this->last_trigger_) {
+      ESP_LOGI(TAG, "<>> %s->%s", new_status.c_str(), this->last_trigger_->get_name().c_str());
+      this->last_trigger_->trigger();
     }
-    this->current_status_ = status;
+
+    this->last_app_state_ = new_state;
+    this->last_status_ = new_status;
   }
 }
-
-float StatusIndicator::get_setup_priority() const { return setup_priority::HARDWARE; }
-float StatusIndicator::get_loop_priority() const { return 50.0f; }
 
 StatusTrigger *StatusIndicator::get_trigger(const std::string &key) {
   auto search = this->triggers_.find(key);
@@ -166,14 +175,16 @@ void StatusIndicator::push_trigger(StatusTrigger *trigger) {
     StatusTrigger *st = *i;
     if (trigger->get_priority() < st->get_priority()) {
       this->stack_.insert(i, trigger);
-      this->current_status_ = "update me";
-      //  log_triggers_();
+      this->last_status_ = "update me";
+      ESP_LOGV(TAG, "After push:");
+      log_triggers_();
       return;
     }
   }
   this->stack_.push_back(trigger);
-  this->current_status_ = "update me";
-  //  log_triggers_();
+  this->last_status_ = "update me";
+  ESP_LOGV(TAG, "After push:");
+  log_triggers_();
 }
 
 void StatusIndicator::pop_trigger(StatusTrigger *trigger, bool incl_group) {
@@ -184,12 +195,13 @@ void StatusIndicator::pop_trigger(StatusTrigger *trigger, bool incl_group) {
     StatusTrigger *st = *i;
     if ((incl_group && group == st->get_group()) || (trigger == st)) {
       this->stack_.erase(i);
-      this->current_status_ = "update me";
+      this->last_status_ = "update me";
     } else {
       ++i;
     }
   }
-  //  log_triggers_();
+  ESP_LOGV(TAG, "After pop:");
+  log_triggers_();
 }
 
 void StatusIndicator::pop_trigger(const std::string &group) {
@@ -199,19 +211,20 @@ void StatusIndicator::pop_trigger(const std::string &group) {
     StatusTrigger *st = *i;
     if (group == st->get_group()) {
       this->stack_.erase(i);
-      this->current_status_ = "update me";
+      this->last_status_ = "update me";
     } else {
       ++i;
     }
   }
-  //  log_triggers_();
+  ESP_LOGV(TAG, "After pop:");
+  log_triggers_();
 }
 
 void StatusIndicator::log_triggers_() {
   for (auto *st : this->stack_) {
-    ESP_LOGD(TAG, "%s", st->get_info().c_str());
+    ESP_LOGV(TAG, "%s", st->get_info().c_str());
   }
-  ESP_LOGD(TAG, "----------------------------- %d ----", this->stack_.size());
+  ESP_LOGV(TAG, "----------------------------- %d ----", this->stack_.size());
 }
 
 }  // namespace status_indicator

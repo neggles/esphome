@@ -2,6 +2,7 @@
 
 #include <map>
 #include <vector>
+
 #include "esphome/core/component.h"
 #include "esphome/core/hal.h"
 #include "esphome/components/light/automation.h"
@@ -12,34 +13,40 @@ class StatusTrigger;
 
 union StatusFlags {
   struct {
-    uint16_t on_error : 1;
-    uint16_t on_warning : 1;
-    uint16_t on_network : 1;
-    uint16_t on_api : 1;
-    uint16_t on_mqtt : 1;
-    uint16_t on_wifi_ap : 1;
+    uint8_t on_error : 1;
+    uint8_t on_warning : 1;
+    uint8_t on_network : 1;
+    uint8_t on_api : 1;
+    uint8_t on_mqtt : 1;
+    uint8_t on_wifi_ap : 1;
   };
-  uint16_t setter = 0;
+  uint8_t setter = 0;
 };
 
 class StatusIndicator : public Component {
  public:
-  void dump_config() override;
-  void loop() override;
-
-  float get_setup_priority() const override;
-  float get_loop_priority() const override;
-
   StatusTrigger *get_trigger(const std::string &key);
+
   void set_trigger(const std::string &key, StatusTrigger *trigger);
+
   void push_trigger(StatusTrigger *trigger);
+
   void pop_trigger(StatusTrigger *trigger, bool incl_group = false);
   void pop_trigger(const std::string &group);
 
+  void loop() override;
+
+  void dump_config() override;
+
+  float get_setup_priority() const override { return setup_priority::HARDWARE; }
+  float get_loop_priority() const override { return 50.0f; }
+
  protected:
   void log_triggers_();
-  std::string current_status_{""};
-  StatusTrigger *current_trigger_{nullptr};
+  std::string last_status_{""};
+  uint8_t last_app_state_{0xFF};
+
+  StatusTrigger *last_trigger_{nullptr};
   StatusFlags status_;
   std::map<std::string, StatusTrigger *> triggers_{};
   std::vector<StatusTrigger *> stack_{};
@@ -49,9 +56,13 @@ class StatusTrigger : public Trigger<> {
  public:
   explicit StatusTrigger(StatusIndicator *parent, std::string group, uint32_t priority, std::string name)
       : parent_(parent), name_(std::move(name)), group_(std::move(group)), priority_(priority) {}
-  std::string get_group() { return this->group_; }
-  uint32_t get_priority() { return this->priority_; }
+
   std::string get_name() { return this->name_; }
+
+  std::string get_group() { return this->group_; }
+
+  uint32_t get_priority() { return this->priority_; }
+
   std::string get_info() { return this->name_ + " \t| " + this->group_ + " \t| " + std::to_string(this->priority_); }
 
  protected:
@@ -77,7 +88,7 @@ template<typename... Ts> class StatusAction : public Action<Ts...>, public Paren
   void set_trigger(StatusTrigger *trigger) { this->trigger_ = trigger; }
   void set_group(const std::string &group) { this->group_ = group; }
 
-  void play(Ts... x) override {
+  void play(const Ts... x) override {
     if (this->state_) {
       if (this->trigger_ != nullptr) {
         this->parent_->push_trigger(this->trigger_);

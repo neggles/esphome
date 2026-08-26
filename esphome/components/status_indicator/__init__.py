@@ -1,4 +1,4 @@
-import esphome.automation as auto
+import esphome.automation as auto  # ruff: ignore[unsorted-imports]
 import esphome.codegen as cg
 import esphome.config_validation as cv
 from esphome.const import (
@@ -113,15 +113,16 @@ def maybe_simple_valuex(*validators, **kwargs):
 
 
 @auto.register_action(
-    "status.push",
-    StatusAction,
-    maybe_simple_valuex(
+    name="status.push",
+    action_type=StatusAction,
+    schema=maybe_simple_valuex(
         {
             cv.GenerateID(CONF_ID): cv.use_id(StatusIndicator),
             cv.Required(CONF_TRIGGER_ID): cv.use_id(StatusTrigger),
         },
         key=CONF_TRIGGER_ID,
     ),
+    synchronous=False,
 )
 async def status_action_push_to_code(config, action_id, template_arg, args):
     var = cg.new_Pvariable(action_id, template_arg)
@@ -135,9 +136,9 @@ async def status_action_push_to_code(config, action_id, template_arg, args):
 
 
 @auto.register_action(
-    "status.pop",
-    StatusAction,
-    maybe_simple_valuex(
+    name="status.pop",
+    action_type=StatusAction,
+    schema=maybe_simple_valuex(
         {
             cv.GenerateID(CONF_ID): cv.use_id(StatusIndicator),
             cv.Optional(CONF_GROUP): cv.string,
@@ -146,6 +147,7 @@ async def status_action_push_to_code(config, action_id, template_arg, args):
         cv.has_exactly_one_key(CONF_GROUP, CONF_TRIGGER_ID),
         key=CONF_TRIGGER_ID,
     ),
+    synchronous=False,
 )
 async def status_action_pop_to_code(config, action_id, template_arg, args):
     var = cg.new_Pvariable(action_id, template_arg)

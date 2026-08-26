@@ -39,7 +39,6 @@ class StatusIndicator : public Component {
   void dump_config() override;
 
   float get_setup_priority() const override { return setup_priority::HARDWARE; }
-  float get_loop_priority() const override { return 50.0f; }
 
  protected:
   void log_triggers_();
